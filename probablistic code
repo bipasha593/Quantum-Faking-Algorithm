@@ -1,0 +1,148 @@
+import random
+import matplotlib.pyplot as plt
+import heapq
+
+class TrafficSimulation:
+    def __init__(self):
+        # Initialize available paths and their base likelihood of being chosen
+        self.available_paths = {
+            "Fast Route": 0.6,    # Most direct path
+            "Medium Route": 0.3,  # Alternative route
+            "Slow Route": 0.1     # Backup route
+        }
+        
+        # How quickly traffic builds up (higher = faster congestion)
+        self.traffic_impact = 0.05
+        
+        # Create a simple city grid (0 = road, 1 = building/obstacle)
+        self.city_map = [
+            [0, 0, 0, 0, 0],
+            [0, 1, 1, 0, 0],  # 1s represent buildings
+            [0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0]
+        ]
+        
+        # Define start and destination points
+        self.start_point = (0, 0)
+        self.destination = (4, 4)
+
+    def calculate_traffic_adjusted_routes(self, current_traffic):
+        """Adjusts route probabilities based on traffic conditions."""
+        adjusted_routes = {}
+        
+        # As traffic increases, reduce probability of using the fast route
+        adjusted_routes["Fast Route"] = max(0.6 - current_traffic, 0.2)
+        adjusted_routes["Medium Route"] = min(0.3 + current_traffic / 2, 0.5)
+        adjusted_routes["Slow Route"] = min(0.1 + current_traffic / 2, 0.3)
+        
+        return adjusted_routes
+
+    def estimate_distance(self, point_a, point_b):
+        """Calculates Manhattan distance between two points."""
+        return abs(point_a[0] - point_b[0]) + abs(point_a[1] - point_b[1])
+
+    def find_best_path(self, start, goal):
+        """Uses A* algorithm to find optimal path avoiding obstacles."""
+        to_explore = []
+        heapq.heappush(to_explore, (0, start))
+        path_history = {}
+        distance_traveled = {start: 0}
+
+        # Explore possible paths
+        while to_explore:
+            _, current_location = heapq.heappop(to_explore)
+            
+            # Check if we've reached our destination
+            if current_location == goal:
+                break
+
+            # Check all adjacent squares (up, down, left, right)
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                next_location = (current_location[0] + dx, current_location[1] + dy)
+                
+                # Make sure we're still on the map
+                if not (0 <= next_location[0] < len(self.city_map) and 
+                       0 <= next_location[1] < len(self.city_map[0])):
+                    continue
+                
+                # Skip if we hit a building
+                if self.city_map[next_location[0]][next_location[1]] == 1:
+                    continue
+                
+                new_distance = distance_traveled[current_location] + 1
+                
+                # If we found a better route, update it
+                if (next_location not in distance_traveled or 
+                    new_distance < distance_traveled[next_location]):
+                    distance_traveled[next_location] = new_distance
+                    priority = new_distance + self.estimate_distance(goal, next_location)
+                    heapq.heappush(to_explore, (priority, next_location))
+                    path_history[next_location] = current_location
+
+        # Reconstruct the path from finish to start
+        final_path = []
+        current = goal
+        while current != start:
+            final_path.append(current)
+            current = path_history[current]
+        final_path.append(start)
+        
+        return list(reversed(final_path))
+
+    def run_simulation(self, num_iterations=1000):
+        """Simulates traffic flow over time."""
+        route_usage = {path: 0 for path in self.available_paths.keys()}
+        current_traffic = 0
+        
+        for step in range(num_iterations):
+            # Get traffic-adjusted probabilities
+            current_probabilities = self.calculate_traffic_adjusted_routes(current_traffic)
+            
+            # Simulate one driver choosing a route
+            chosen_route = random.choices(
+                list(self.available_paths.keys()),
+                weights=list(current_probabilities.values())
+            )[0]
+            route_usage[chosen_route] += 1
+            
+            # Increase traffic every 100 steps
+            if step % 100 == 0:
+                current_traffic += self.traffic_impact
+
+        return route_usage
+
+    def visualize_results(self, route_usage):
+        """Creates a bar chart showing route popularity."""
+        colors = {'Fast Route': 'blue', 'Medium Route': 'green', 'Slow Route': 'red'}
+        
+        plt.figure(figsize=(10, 6))
+        plt.bar(route_usage.keys(), route_usage.values(), color=[colors[route] for route in route_usage.keys()])
+        plt.xlabel('Available Routes')
+        plt.ylabel('Number of Drivers')
+        plt.title('Route Usage with Traffic Simulation')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.show()
+
+# Run the simulation
+def main():
+    # Create and run simulation
+    sim = TrafficSimulation()
+    results = sim.run_simulation()
+    
+    # Show results
+    print("\nSimulation Results:")
+    for route, count in results.items():
+        print(f"{route}: {count} drivers")
+    
+    # Visualize the data
+    sim.visualize_results(results)
+    
+    # Find and display optimal path
+    best_path = sim.find_best_path(sim.start_point, sim.destination)
+    print(f"\nOptimal path from {sim.start_point} to {sim.destination}:")
+    print(" → ".join([str(point) for point in best_path]))
+
+if __name__ == "__main__":
+    main()
